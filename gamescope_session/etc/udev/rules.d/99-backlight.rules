@@ -1,0 +1,1 @@
+ACTION=="add", DEVPATH=="/devices/pci0000:00/0000:00:08.1/0000:04:00.0/backlight/amdgpu_bl0", RUN+="/usr/bin/chown -R root:wheel /sys/class/backlight/amdgpu_bl0/brightness", RUN+="/usr/bin/chmod 664 /sys/class/backlight/amdgpu_bl0/brightness"

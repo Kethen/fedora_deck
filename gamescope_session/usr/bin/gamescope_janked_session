@@ -1,0 +1,122 @@
+#!/bin/bash
+
+set -x
+
+# session globals
+export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0
+
+export HOMETEST_DESKTOP=1
+export HOMETEST_DESKTOP_SESSION=gnome
+
+#export STEAM_USE_MANGOAPP=1
+export MANGOHUD_CONFIGFILE=$(mktemp /tmp/mangohud.XXXXXXXX)
+#export MANGOAPP=1
+
+#export STEAM_USE_DYNAMIC_VRS=1
+#export RADV_FORCE_VRS_CONFIG_FILE=$(mktemp /tmp/radv_vrs.XXXXXXXX)
+
+# more globals lifted off steamos
+
+# Let's try this across the board to see if it breaks anything
+# Helps performance in HZD, Cyberpunk, at least
+# Expose 8 physical cores, instead of 4c/8t
+export WINE_CPU_TOPOLOGY=8:0,1,2,3,4,5,6,7
+
+# To expose vram info from radv's patch we're including
+#export WINEDLLOVERRIDES=dxgi=n
+
+# XXX what does this do on fedora?
+# Workaround for steam getting killed immediatly during reboot
+# See: jupiter/tasks/-/issues/280
+export STEAMOS_STEAM_REBOOT_SENTINEL="/tmp/steamos-reboot-sentinel"
+if [[ -e "$STEAMOS_STEAM_REBOOT_SENTINEL" ]]; then
+	rm -f "$STEAMOS_STEAM_REBOOT_SENTINEL"
+	/usr/bin/steamos-polkit-helpers/steamos-reboot-now
+	sudo -n reboot
+fi
+
+# Workaround for steam getting killed immediatly during shutdown
+# Same idea as reboot sentinel above
+export STEAMOS_STEAM_SHUTDOWN_SENTINEL="/tmp/steamos-shutdown-sentinel"
+if [[ -e "$STEAMOS_STEAM_SHUTDOWN_SENTINEL" ]]; then
+	rm -f "$STEAMOS_STEAM_SHUTDOWN_SENTINEL"
+	/usr/bin/steamos-polkit-helpers/steamos-poweroff-now
+	sudo -n poweroff
+fi
+
+# Enable volume key management via steam for this session
+export STEAM_ENABLE_VOLUME_HANDLER=1
+
+# Have SteamRT's xdg-open send http:// and https:// URLs to Steam
+export SRT_URLOPEN_PREFER_STEAM=1
+
+# Disable automatic audio device switching in steam, now handled by wireplumber
+export STEAM_DISABLE_AUDIO_DEVICE_SWITCHING=1
+
+# Enable support for xwayland isolation per-game in Steam
+export STEAM_MULTIPLE_XWAYLANDS=1
+
+# We have the Mesa integration for the fifo-based dynamic fps-limiter
+export STEAM_GAMESCOPE_DYNAMIC_FPSLIMITER=1
+
+# Don't wait for buffers to idle on the client side before sending them to gamescope
+export vk_xwayland_wait_ready=false
+
+# Set input method modules for Qt/GTK that will show the Steam keyboard
+export QT_IM_MODULE=steam
+export GTK_IM_MODULE=Steam
+
+# TODO!
+# Bring this back when gamescope side is more complete
+#
+# Remove vsync handling from Xwayland, we handle it in gamescope
+#export vblank_mode=0
+#export MESA_VK_WSI_PRESENT_MODE=immediate
+
+# To play nice with the short term callback-based limiter for now
+export GAMESCOPE_LIMITER_FILE=$(mktemp /tmp/gamescope-limiter.XXXXXXXX)
+
+export XCURSOR_THEME=steam
+
+# Workaround for Steam login issue while Steam client change propagates out of Beta
+touch ~/.steam/root/config/SteamAppData.vdf || true
+
+export STEAM_UPDATEUI_PNG_BACKGROUND=/usr/share/steamos/steamos.png
+
+ulimit -n 524288
+
+tmpdir="$([[ -n ${XDG_RUNTIME_DIR+x} ]] && mktemp -p "$XDG_RUNTIME_DIR" -d -t gamescope.XXXXXXX)"
+socket="${tmpdir:+$tmpdir/startup.socket}"
+
+mkfifo -- "$socket"
+
+gamescope \
+	--generate-drm-mode fixed \
+	--xwayland-count 2 \
+	-w 1280 -h 800 \
+	--default-touch-mode 4 \
+	--hide-cursor-delay 3000 \
+	--max-scale 2 \
+	--fade-out-duration 200 \
+	-e -R "$socket" \
+	-O '*',eDP-1 \
+	--cursor-hotspot 5,3 --cursor /usr/share/steamos/steamos-cursor.png \
+	&
+gamescope_pid="$!"
+
+if read -r -t 3 response_x_display response_wl_display <> "$socket"; then
+	export DISPLAY="$response_x_display"
+	export GAMESCOPE_WAYLAND_DISPLAY="$response_wl_display"
+	# gamescope session is ready
+else
+	kill -9 "$gamescope_pid"
+	wait
+	exit 0
+	# back to display manager
+fi
+
+mangoapp &
+steam -gamepadui -steamos3 -steamdeck 2>&1 >$HOME/steam_log
+#steam -gamepadui 2>&1 >$HOME/steam_log
+
+kill "$gamescope_pid"

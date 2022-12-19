@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=game scoop
+Comment=game scoop
+Exec=/usr/bin/gamescope_janked_session
+TryExec=/usr/bin/gamescope_janked_session
+Type=Application
+DesktopNames=scoop
