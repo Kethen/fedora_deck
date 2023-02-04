@@ -1,0 +1,7 @@
+[Unit]
+Description=change non-udev permissions for gamescope session
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /usr/libexec/gamescope_steam_permissions.sh
+
